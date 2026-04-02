@@ -81,25 +81,19 @@ function defaultCard(id) {
   return { id, interval: 0, easeFactor: 2.5, repetitions: 0, dueDate: 0, introduced: false };
 }
 
-function updateCard(numberId, correct) {
+// quality: 5 = first try, 3 = one retry, 1 = two+ retries
+// Only counts toward graduation (repetitions) if quality >= 3 (≤ 1 wrong attempt)
+function updateCard(numberId, quality) {
   const cards = loadCards();
   const card  = cards[numberId] || defaultCard(numberId);
-  const q     = correct ? 5 : 1;
 
-  if (q >= 3) {
-    if      (card.repetitions === 0) card.interval = 1;
-    else if (card.repetitions === 1) card.interval = 6;
-    else                             card.interval = Math.round(card.interval * card.easeFactor);
-    card.repetitions++;
-  } else {
-    card.repetitions = 0;
-    card.interval    = 1;
+  if (quality >= 3) {
+    card.repetitions = (card.repetitions || 0) + 1;
   }
+  // quality < 3: no graduation credit — must practice again
 
-  card.easeFactor  = Math.max(1.3, card.easeFactor + 0.1 - (5 - q) * (0.08 + (5 - q) * 0.02));
-  card.dueDate     = Date.now() + card.interval * 24 * 60 * 60 * 1000;
-  card.introduced  = true;
-  cards[numberId]  = card;
+  card.introduced = true;
+  cards[numberId] = card;
   saveCards(cards);
 }
 
@@ -162,6 +156,7 @@ let streak          = 0;
 let answered        = false;
 let totalStars      = 0;
 let speakTimer      = null;
+let wrongAttempts   = 0;
 
 // ─────────────────────────────────────────────────────────────
 // INIT / FLOW
@@ -187,6 +182,7 @@ function nextQuestion() {
 // ─────────────────────────────────────────────────────────────
 function renderQuestion() {
   answered        = false;
+  wrongAttempts   = 0;
   const target    = sessionCards[currentIndex];
   currentQuestion = generateQuestion(target);
 
@@ -272,40 +268,45 @@ function makeChoices(choices, target, showObjects, emoji) {
 // ANSWER HANDLING
 // ─────────────────────────────────────────────────────────────
 function handleAnswer(btn, correct) {
-  answered = true;
   clearTimeout(speakTimer);
   window.speechSynthesis.cancel();
-  document.querySelectorAll('.choice-btn').forEach(b => { b.disabled = true; });
 
   if (correct) {
+    answered = true;
+    document.querySelectorAll('.choice-btn').forEach(b => { b.disabled = true; });
     btn.classList.add('correct');
     playCorrect();
-    streak++;
+    showFeedbackBadge('🌟');
+
+    // quality: 5 = no mistakes, 3 = one mistake, 1 = two+ mistakes
+    const quality = wrongAttempts === 0 ? 5 : wrongAttempts === 1 ? 3 : 1;
+    updateCard(currentQuestion.target.id, quality);
+
     sessionStars++;
     totalStars++;
     localStorage.setItem('total_stars', totalStars);
+    if (wrongAttempts === 0) streak++;
     updateHeader();
 
-    if (streak > 0 && streak % 5 === 0) {
+    if (wrongAttempts === 0 && streak % 5 === 0 && streak > 0) {
       showOverlay('🌟', '🎉 Amazing! 🎉', `${streak} in a row!`);
       setTimeout(nextQuestion, 2600);
     } else {
       setTimeout(nextQuestion, 1200);
     }
   } else {
+    // Disable only this button — keep others active for retry
+    btn.disabled = true;
     btn.classList.add('wrong');
     playWrong();
-    streak = 0;
-    updateHeader();
+    showFeedbackBadge('🙈');
 
-    document.querySelectorAll('.choice-btn').forEach(b => {
-      if (Number(b.dataset.id) === currentQuestion.target.id) b.classList.add('correct');
-    });
-
-    setTimeout(nextQuestion, 1900);
+    if (wrongAttempts === 0) {
+      streak = 0;
+      updateHeader();
+    }
+    wrongAttempts++;
   }
-
-  updateCard(currentQuestion.target.id, correct);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -316,6 +317,14 @@ function updateHeader() {
   document.getElementById('streak-count').textContent = streak;
   document.getElementById('session-progress').textContent =
     `${Math.min(currentIndex + 1, sessionCards.length)} / ${sessionCards.length}`;
+}
+
+function showFeedbackBadge(emoji) {
+  const badge = document.createElement('div');
+  badge.className   = 'feedback-badge';
+  badge.textContent = emoji;
+  document.body.appendChild(badge);
+  setTimeout(() => badge.remove(), 700);
 }
 
 function showOverlay(emoji, title, sub) {

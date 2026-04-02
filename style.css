@@ -160,6 +160,23 @@ body {
   75%       { transform: translateX(9px); }
 }
 
+/* ── Feedback badge (correct / wrong flash) ──────── */
+.feedback-badge {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  font-size: 7rem;
+  pointer-events: none;
+  z-index: 200;
+  animation: badgePop 0.7s ease forwards;
+}
+
+@keyframes badgePop {
+  0%   { transform: translate(-50%, -50%) scale(0);   opacity: 1; }
+  50%  { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1);   opacity: 0; }
+}
+
 /* ── Overlay ─────────────────────────────────────── */
 #overlay {
   position: fixed;
